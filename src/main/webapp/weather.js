@@ -2,17 +2,18 @@ import {
     buildElement,
     $,
     $$,
-    replaceContent
+    replaceContent,
+    textNode
 } from "./lib.js";
 
 const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-const styles = {
-    "T": "stroke: red",
-    "Pp": "stroke: green",
-    "H": "stroke: yellow",
-    "W": "stroke: #8c8cc8",
-    "G": "stroke: #acacca; stroke-dasharray: 1%"
+const wants = {
+    "T": {color: "red", name: "Temprature"},
+    "Pp": {color: "green", name: "Rain Chance %"},
+    "H": {color: "#0064fa", name: "Humidity %"},
+    "S": {color:"#8c8cc8", name: "Wind speed"},
+    "G": {color: "#acacca", name: "Wind gust"}
 };
 
 class Point {
@@ -25,7 +26,7 @@ class Point {
         return Math.hypot(this.x, this.y);
     }
 
-    /**
+   /**
      *
      * @param {Point} p1 
      * @param {Point} p2 
@@ -49,7 +50,6 @@ class Point {
 }
 
 function polyLine(points) {
-    //    const result = ["M", points[0].x, points[0].y, "C"];
     const result = [];
     for (let i = 1; i < points.length - 2; i += 1) {
 
@@ -102,9 +102,14 @@ function extractWeather(json) {
 
     for (let i = 0; i < fields.length; i += 1) {
         const f = fields[i]["name"];
+
+        if (!(f in wants)) {
+            continue;
+        } 
+
         const u = fields[i]["units"];
         dataSets[f] = {
-            name: fields[i]["$"],
+            name: wants[f].name,
             unit: u,
             normalise: u in units,
             parse: f !== "V", // Don't parse visibility
@@ -163,23 +168,23 @@ function buildCircle(x, y, r, ...args) {
     return buildSVG("circle", "cx", x, "cy", y, "r", r, ...args);
 }
 
-function drawDataSet(dataSet, which) {
-    const group = buildSVG("g", "style", styles[which]);
-
+function buildDataSetPath(dataSet, which) {
     const range = dataSet.normalise ? dataSet.limits.max - dataSet.limits.min : 1;
 
     let points = [];
 
     for (let i = 0; i < dataSet.data.length; i += 1) {
         const v = dataSet.data[i];
-        const t = dataSet.normalise ? 100 * (v - dataSet.limits.min) / range : v;
-        points.push(new Point(i * 20, t));
+        const t = dataSet.normalise ? 300 * (v - dataSet.limits.min) / range : 3 * v;
+        points.push(new Point(i * 20, 300 - t));
     }
 
     const p2 = polyLine(points);
-    group.appendChild(buildPath(["M", points[0].x, points[0].y, "C", ...p2]));
+    
+    const path = buildPath(["M", points[0].x, points[0].y, "C", ...p2]);
 
-    return group;
+    path.id = "path-" + which;
+    return path;
 }
 
 function sameDay(left, right) {
@@ -189,9 +194,12 @@ function sameDay(left, right) {
 }
 
 function buildAxes(dates) {
-    const axes = buildSVG("g", "stroke", "black", "fill", "none", "stroke-width", "1");
+    const axes = buildSVG("g", "stroke", "black", "fill", "none", "stroke-width", "0.5");
+
+    const width = dates.length * 20;
+
     axes.appendChild(buildPath([
-        "M 350 0 h -350 v 100"
+        "M", width, "300 h", -width, "v -300"
     ]));
 
     let date = dates[0];
@@ -203,7 +211,7 @@ function buildAxes(dates) {
         date = dates[i];
 
         axes.appendChild(buildPath([
-            "M " + 10 * i + " 0 v 100"
+            "M " + 20 * i + " 0 v 300"
         ]))
     }
 
@@ -213,25 +221,43 @@ function buildAxes(dates) {
 function drawGraph(json) {
     const dataSets = extractWeather(json);
 
-    const width = 35 * 20;
+    const width = dataSets.dates.length * 20;
 
     const svg = buildSVG("svg",
-        "width", width,
-        "height", "300",
-        "viewBox", "0 0 350 100"
+        "width", width * 2,
+        "height", "600",
+        "viewBox", "0 0 " + width + " 300"
     );
 
-    const graph = buildSVG("g", "transform", "translate(3, 97) scale(0.9, -1)");
+    const graph = buildSVG("g" /*, "transform", "translate(3, 97) scale(0.9, -1)" */);
 
     graph.appendChild(buildAxes(dataSets.dates));
 
-    const dataLines = buildSVG("g", "stroke-linejoin", "round", "fill", "none", "stroke-width", "0.75");
+    const defs = buildSVG("defs");
+    const texts = buildSVG("text", "font-size", "3", "font-family", "Sans", "dominant-baseline", "central");
+    const paths = buildSVG("g", "fill", "none", "stroke", "#e0e0e0", "stroke-width", "4", "stroke-opacity", "0.5");
 
-    ["T", "Pp", "W", "G", "H"].forEach(f =>
-        dataLines.appendChild(drawDataSet(dataSets[f], f))
-    );
+    Object.keys(wants).forEach(f => {
+        defs.appendChild(buildDataSetPath(dataSets[f], f))
 
-    graph.appendChild(dataLines);
+        const textPath = buildSVG("textPath", 
+            "href", "#path-" + f, 
+            "method", "stretch", 
+            "fill", wants[f].color, 
+            "spacing", "auto"
+        );
+
+        const name = dataSets[f].name + " - "
+        textPath.appendChild(textNode(name.toUpperCase().repeat(200)));
+        texts.appendChild(textPath);
+
+        paths.appendChild(buildSVG("use", "href", "#path-" + f));
+    });
+
+    svg.appendChild(defs);
+
+    graph.appendChild(paths);
+    graph.appendChild(texts);
 
     svg.appendChild(graph);
 
