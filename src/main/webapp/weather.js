@@ -9,11 +9,26 @@ import {
 const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 const wants = {
-    "T": {color: "red", name: "Temprature"},
-    "Pp": {color: "green", name: "Rain Chance %"},
-    "H": {color: "#0064fa", name: "Humidity %"},
-    "S": {color:"#8c8cc8", name: "Wind speed"},
-    "G": {color: "#acacca", name: "Wind gust"}
+    "T": {
+        color: "red",
+        name: "Temprature"
+    },
+    "Pp": {
+        color: "green",
+        name: "Rain Chance %"
+    },
+    "H": {
+        color: "#0064fa",
+        name: "Humidity %"
+    },
+    "S": {
+        color: "#8c8cc8",
+        name: "Wind speed"
+    },
+    "G": {
+        color: "#acacca",
+        name: "Wind gust"
+    }
 };
 
 class Point {
@@ -26,7 +41,7 @@ class Point {
         return Math.hypot(this.x, this.y);
     }
 
-   /**
+    /**
      *
      * @param {Point} p1 
      * @param {Point} p2 
@@ -105,7 +120,7 @@ function extractWeather(json) {
 
         if (!(f in wants)) {
             continue;
-        } 
+        }
 
         const u = fields[i]["units"];
         dataSets[f] = {
@@ -180,7 +195,7 @@ function buildDataSetPath(dataSet, which) {
     }
 
     const p2 = polyLine(points);
-    
+
     const path = buildPath(["M", points[0].x, points[0].y, "C", ...p2]);
 
     path.id = "path-" + which;
@@ -193,7 +208,22 @@ function sameDay(left, right) {
         left.getUTCDate() === right.getUTCDate();
 }
 
+function pad(digit) {
+    if (digit < 10) {
+        return "0" +digit;
+    } else {
+        return "" + digit;
+    }
+}
+
+function formatDate(date) {
+    return dayNames[date.getUTCDay()] + " " + pad(date.getUTCHours()) + ":00Z";
+}
+
 function buildAxes(dates) {
+
+    const holder = buildSVG("g");
+    const periods = buildSVG("g");
     const axes = buildSVG("g", "stroke", "black", "fill", "none", "stroke-width", "0.5");
 
     const width = dates.length * 20;
@@ -204,18 +234,31 @@ function buildAxes(dates) {
 
     let date = dates[0];
 
-    for (let i = 1; i < dates.length; i += 1) {
+    for (let i = 0; i < dates.length; i += 1) {
+        const x = 20 * i;
+        const period = buildSVG("g");
+
+        const text = buildSVG("text", "class", "date", "transform", "translate(" + x  + ", 0) rotate(90)");
+        text.appendChild(textNode(formatDate(dates[i])));
+        period.appendChild(text);
+
+        const background = buildPath(["M", x, "0 h 20 v 300 h -20 Z"]);
+        background.setAttribute("class", "period");
+        period.appendChild(background);
+        periods.appendChild(period);
+
         if (sameDay(date, dates[i])) {
             continue;
         }
         date = dates[i];
-
         axes.appendChild(buildPath([
             "M " + 20 * i + " 0 v 300"
         ]))
     }
 
-    return axes;
+    holder.appendChild(axes);
+    holder.appendChild(periods);
+    return holder;
 }
 
 function drawGraph(json) {
@@ -229,9 +272,8 @@ function drawGraph(json) {
         "viewBox", "0 0 " + width + " 300"
     );
 
-    const graph = buildSVG("g" /*, "transform", "translate(3, 97) scale(0.9, -1)" */);
+    const graph = buildSVG("g" /*, "transform", "translate(3, 97) scale(0.9, -1)" */ );
 
-    graph.appendChild(buildAxes(dataSets.dates));
 
     const defs = buildSVG("defs");
     const texts = buildSVG("text", "font-size", "3", "font-family", "Sans", "dominant-baseline", "central");
@@ -240,10 +282,10 @@ function drawGraph(json) {
     Object.keys(wants).forEach(f => {
         defs.appendChild(buildDataSetPath(dataSets[f], f))
 
-        const textPath = buildSVG("textPath", 
-            "href", "#path-" + f, 
-            "method", "stretch", 
-            "fill", wants[f].color, 
+        const textPath = buildSVG("textPath",
+            "href", "#path-" + f,
+            "method", "stretch",
+            "fill", wants[f].color,
             "spacing", "auto"
         );
 
@@ -258,7 +300,7 @@ function drawGraph(json) {
 
     graph.appendChild(paths);
     graph.appendChild(texts);
-
+    graph.appendChild(buildAxes(dataSets.dates));
     svg.appendChild(graph);
 
     replaceContent($("#graph"), svg);
