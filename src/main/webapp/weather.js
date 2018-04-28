@@ -7,7 +7,7 @@ import {
 } from "./lib.js";
 
 const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
+const wantOrder = ["U", "H", "S", "G", "Pp", "T"];
 const wants = {
     "T": {
         color: "red",
@@ -28,6 +28,10 @@ const wants = {
     "G": {
         color: "#acacca",
         name: "Wind gust"
+    },
+    "U": {
+        color: "#7F00FF",
+        name: "UV"
     }
 };
 
@@ -117,14 +121,9 @@ function extractWeather(json) {
 
     for (let i = 0; i < fields.length; i += 1) {
         const f = fields[i]["name"];
-
-        if (!(f in wants)) {
-            continue;
-        }
-
         const u = fields[i]["units"];
         dataSets[f] = {
-            name: wants[f].name,
+            name: f in wants ? wants[f].name : fields[i]["$"],
             unit: u,
             normalise: u in units,
             parse: f !== "V", // Don't parse visibility
@@ -179,27 +178,73 @@ function extractWeather(json) {
     return dataSets;
 }
 
+function normalise(dataSet, index) {
+    return 300 * (dataSet.data[index] - dataSet.limits.min) / (dataSet.limits.max - dataSet.limits.min);
+}
+
 function buildCircle(x, y, r, ...args) {
     return buildSVG("circle", "cx", x, "cy", y, "r", r, ...args);
 }
 
 function buildDataSetPath(dataSet, which) {
-    const range = dataSet.normalise ? dataSet.limits.max - dataSet.limits.min : 1;
-
     let points = [];
 
     for (let i = 0; i < dataSet.data.length; i += 1) {
-        const v = dataSet.data[i];
-        const t = dataSet.normalise ? 300 * (v - dataSet.limits.min) / range : 3 * v;
-        points.push(new Point(i * 20, 300 - t));
+        const x = i * 20; 
+        const y = dataSet.normalise ? normalise(dataSet, i) : 3 * dataSet.data[i];
+        points.push(new Point(x, 300 - y));
     }
 
-    const p2 = polyLine(points);
+//    const p2 = polyLine(points);
 
-    const path = buildPath(["M", points[0].x, points[0].y, "C", ...p2]);
+    const path = buildPath(["M", points[0].x, points[0].y, "C", ...polyLine(points)]);
 
     path.id = "path-" + which;
     return path;
+}
+
+function buildText(text, ...args) {
+    const result = buildSVG("text", ...args);
+    result.appendChild(textNode(text));
+    return result;
+}
+
+function buildValueMarkersOld(dataSet, f) {
+    const g = buildSVG("g");
+    const color = wants[f].color;
+
+    for (let i = 0; i < dataSet.data.length; i += 1) {
+        const x = i * 20;
+        const y = dataSet.normalise ? normalise(dataSet, i) : 3 * dataSet.data[i];
+        //g.appendChild(buildCircle(x, 300 - y, 5, "fill", "none", "class", "data-marker", "stroke", color ));
+        g.appendChild(buildText(
+            dataSet.data[i] + dataSet.unit, 
+            "x", x, "y", 300 - y, 
+            "alignment-baseline", "central",
+            "text-anchor", "middle",
+            "class", "data-text", "fill", "black"
+        ));       
+    }
+
+    return g;
+}
+
+function buildValueMarkers(dataSets, index) {
+    const g = buildSVG("g");
+    for (let f in wants) {
+        const dataSet = dataSets[f];
+        const x = index * 20;
+        const y = dataSet.normalise ? normalise(dataSet, index) : 3 * dataSet.data[index];
+        //g.appendChild(buildCircle(x, 300 - y, 5, "fill", "none", "class", "data-marker", "stroke", color ));
+        g.appendChild(buildText(
+            dataSet.data[index] + dataSet.unit, 
+            "x", x, "y", 300 - y, 
+            "alignment-baseline", "central",
+            "text-anchor", "middle",
+            "class", "data-text", "fill", "black"
+        ));       
+    } 
+    return g;
 }
 
 function sameDay(left, right) {
@@ -220,8 +265,9 @@ function formatDate(date) {
     return dayNames[date.getUTCDay()] + " " + pad(date.getUTCHours()) + ":00Z";
 }
 
-function buildAxes(dates) {
+function buildAxes(dataSets) {
 
+    const dates = dataSets.dates;
     const holder = buildSVG("g");
     const periods = buildSVG("g");
     const axes = buildSVG("g", "stroke", "black", "fill", "none", "stroke-width", "0.5");
@@ -231,6 +277,7 @@ function buildAxes(dates) {
     axes.appendChild(buildPath([
         "M", width, "300 h", -width, "v -300"
     ]));
+
 
     let date = dates[0];
 
@@ -242,9 +289,13 @@ function buildAxes(dates) {
         text.appendChild(textNode(formatDate(dates[i])));
         period.appendChild(text);
 
-        const background = buildPath(["M", x, "0 h 20 v 300 h -20 Z"]);
-        background.setAttribute("class", "period");
-        period.appendChild(background);
+        const g = buildSVG("g", "class", "period");
+
+        g.appendChild(buildValueMarkers(dataSets, i));
+
+        const background = buildPath(["M", x - 10, "0 h 20 v 300 h -20 Z"]);
+        g.appendChild(background);
+        period.appendChild(g);
         periods.appendChild(period);
 
         if (sameDay(date, dates[i])) {
@@ -274,12 +325,12 @@ function drawGraph(json) {
 
     const graph = buildSVG("g" /*, "transform", "translate(3, 97) scale(0.9, -1)" */ );
 
-
     const defs = buildSVG("defs");
     const texts = buildSVG("text", "font-size", "3", "font-family", "Sans", "dominant-baseline", "central");
     const paths = buildSVG("g", "fill", "none", "stroke", "#e0e0e0", "stroke-width", "4", "stroke-opacity", "0.5");
+    const valueMarkers = buildSVG("g");
 
-    Object.keys(wants).forEach(f => {
+    wantOrder.forEach(f => {
         defs.appendChild(buildDataSetPath(dataSets[f], f))
 
         const textPath = buildSVG("textPath",
@@ -290,17 +341,19 @@ function drawGraph(json) {
         );
 
         const name = dataSets[f].name + " - "
-        textPath.appendChild(textNode(name.toUpperCase().repeat(200)));
+        textPath.appendChild(textNode(name.toUpperCase().repeat(250)));
         texts.appendChild(textPath);
 
         paths.appendChild(buildSVG("use", "href", "#path-" + f));
+ //       valueMarkers.appendChild(buildValueMarkers(dataSets[f], f));
     });
 
     svg.appendChild(defs);
 
     graph.appendChild(paths);
     graph.appendChild(texts);
-    graph.appendChild(buildAxes(dataSets.dates));
+//    graph.appendChild(valueMarkers);
+    graph.appendChild(buildAxes(dataSets));
     svg.appendChild(graph);
 
     replaceContent($("#graph"), svg);

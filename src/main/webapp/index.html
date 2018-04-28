@@ -1,25 +1,37 @@
 <!DOCTYPE html>
 <html>
-    <head>
-        <title>Todays weather</title>
-        <style type="text/css">
 
-            .date {
-                font-size: 8px;
-                font-family: 'Lucida Sans', 'Lucida Sans Regular', 'Lucida Grande', 'Lucida Sans Unicode', Geneva, Verdana, sans-serif
-            }
+<head>
+    <title>Todays weather</title>
+    <style type="text/css">
+        .date {
+            opacity: 1;
+            font-size: 8px;
+            fill: black;
+            font-family: 'Lucida Sans', 'Lucida Sans Regular', 'Lucida Grande', 'Lucida Sans Unicode', Geneva, Verdana, sans-serif
+        }
+
+        .data-text {
+            font-size: 6px;
+            font-family: 'Lucida Sans', 'Lucida Sans Regular', 'Lucida Grande', 'Lucida Sans Unicode', Geneva, Verdana, sans-serif;
+        }
 
         .period {
-            fill: rgba(0,0,0,0);
-        } 
+            opacity: 0;
+            fill: rgba(0, 0, 0, 0);
+            transition: opacity 200ms cubic-bezier(0.445, 0.05, 0.55, 0.95), fill 200ms cubic-bezier(0.445, 0.05, 0.55, 0.95);
+        }
+
         .period:hover {
+            opacity: 1;
             fill: rgba(0.3, 0.3, 0.3, 0.3);
         }
-        
-        </style>
-    </head>
-    <body>
-        <div id="graph"></div>
-        <script type="module" src="weather.js"></script>
-    </body>
+    </style>
+</head>
+
+<body>
+    <div id="graph"></div>
+    <script type="module" src="weather.js"></script>
+</body>
+
 </html>
